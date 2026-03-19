@@ -1,29 +1,52 @@
 import { Router } from 'express'
 import { body, param } from 'express-validator'
-import { createOrder, getOrders, updateOrderStatus } from '../controllers/orderController.js'
+import {
+  createOrder,
+  getMyOrders,
+  getOrders,
+  updateOrderStatus,
+} from '../controllers/orderController.js'
 import { protect } from '../middleware/authMiddleware.js'
 import { requireAdmin } from '../middleware/adminMiddleware.js'
 import { validateRequest } from '../middleware/validationMiddleware.js'
+import { normalizeTableNumber, normalizeText, roundPrice } from '../utils/helpers.js'
 
 const router = Router()
 
 router.post(
   '/',
+  protect,
   [
-    body('tableNumber').trim().notEmpty().withMessage('Table number is required.'),
-    body('totalPrice').isFloat({ min: 0 }).withMessage('Total price must be valid.'),
-    body('customerId').optional({ values: 'falsy' }).isString(),
-    body('items').isArray({ min: 1 }).withMessage('At least one order item is required.'),
-    body('items.*.menuItemId').optional({ values: 'falsy' }).isString(),
-    body('items.*.name').trim().notEmpty().withMessage('Item name is required.'),
-    body('items.*.price').isFloat({ min: 0 }).withMessage('Item price must be valid.'),
-    body('items.*.quantity').isInt({ min: 1 }).withMessage('Item quantity must be at least 1.'),
+    body('tableNumber')
+      .customSanitizer(normalizeTableNumber)
+      .isLength({ min: 1, max: 20 })
+      .withMessage('Table number is required.'),
+    body('paymentMethod')
+      .isIn(['stripe', 'counter'])
+      .withMessage('Payment method must be stripe or counter.'),
+    body('totalPrice')
+      .customSanitizer(roundPrice)
+      .isFloat({ min: 0, max: 1000000 })
+      .withMessage('Total price must be valid.'),
+    body('customerId').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid customer id.'),
+    body('items').isArray({ min: 1, max: 25 }).withMessage('At least one order item is required.'),
+    body('items.*.menuItemId').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid menu item id.'),
+    body('items.*.name')
+      .customSanitizer(normalizeText)
+      .isLength({ min: 2, max: 120 })
+      .withMessage('Item name is required.'),
+    body('items.*.price')
+      .customSanitizer(roundPrice)
+      .isFloat({ min: 0, max: 100000 })
+      .withMessage('Item price must be valid.'),
+    body('items.*.quantity').isInt({ min: 1, max: 20 }).withMessage('Item quantity must be at least 1.'),
   ],
   validateRequest,
   createOrder,
 )
 
 router.get('/', protect, requireAdmin, getOrders)
+router.get('/my', protect, getMyOrders)
 
 router.put(
   '/:id/status',

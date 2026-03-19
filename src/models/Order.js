@@ -10,6 +10,7 @@ export async function createOrderRecord(data) {
   const now = new Date()
   const document = {
     paymentStatus: 'unpaid',
+    paymentMethod: 'counter',
     status: 'pending',
     ...data,
     customerId: data.customerId && isValidObjectId(data.customerId) ? toObjectId(data.customerId) : null,
@@ -26,6 +27,13 @@ export async function createOrderRecord(data) {
 
 export async function findAllOrders() {
   return orders().find({}).sort({ createdAt: -1 }).toArray()
+}
+
+export async function findOrdersByCustomerId(customerId) {
+  return orders()
+    .find({ customerId: toObjectId(customerId) })
+    .sort({ createdAt: -1 })
+    .toArray()
 }
 
 export async function updateOrderStatusById(id, status) {

@@ -12,7 +12,9 @@ function getJwtVerifyOptions() {
 export async function protect(req, res, next) {
   try {
     const authHeader = req.headers.authorization || ''
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const cookieName = process.env.JWT_COOKIE_NAME || 'jb_access_token'
+    const token = req.cookies?.[cookieName] || bearerToken
 
     if (!token) {
       return errorResponse(res, 401, 'Authentication required.', 'AUTH_REQUIRED')

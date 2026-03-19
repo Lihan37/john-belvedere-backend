@@ -8,6 +8,7 @@ import {
 import { generateToken } from '../utils/generateToken.js'
 import {
   buildAuthPayload,
+  normalizeEmail,
   errorResponse,
   getAllowedAdminPhones,
   sanitizePhone,
@@ -19,10 +20,31 @@ function resolveRole(phone) {
   return getAllowedAdminPhones().includes(normalizedPhone) ? 'admin' : 'customer'
 }
 
+function getCookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production'
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    path: '/',
+  }
+}
+
+function setAuthCookie(res, token) {
+  const cookieName = process.env.JWT_COOKIE_NAME || 'jb_access_token'
+  res.cookie(cookieName, token, getCookieOptions())
+}
+
+function clearAuthCookie(res) {
+  const cookieName = process.env.JWT_COOKIE_NAME || 'jb_access_token'
+  res.clearCookie(cookieName, getCookieOptions())
+}
+
 export async function register(req, res, next) {
   try {
     const data = matchedData(req, { locations: ['body'] })
-    const email = data.email?.toLowerCase() || undefined
+    const email = data.email ? normalizeEmail(data.email) : undefined
     const phone = data.phone ? sanitizePhone(data.phone) : undefined
 
     if (!email && !phone) {
@@ -48,9 +70,10 @@ export async function register(req, res, next) {
 
     const token = generateToken(user)
 
+    setAuthCookie(res, token)
+
     return successResponse(res, 201, 'Account created successfully.', {
       user: buildAuthPayload(user),
-      token,
     })
   } catch (error) {
     next(error)
@@ -59,7 +82,7 @@ export async function register(req, res, next) {
 
 export async function login(req, res, next) {
   try {
-    const identity = req.body.identity?.trim()?.toLowerCase()
+    const identity = req.body.identity ? normalizeEmail(req.body.identity) : undefined
     const phone = req.body.phone ? sanitizePhone(req.body.phone) : undefined
     const requestedRole = req.body.role
 
@@ -69,7 +92,7 @@ export async function login(req, res, next) {
     })
 
     if (!user) {
-      return errorResponse(res, 401, 'Invalid credentials.', 'INVALID_CREDENTIALS')
+      return errorResponse(res, 404, 'No account found. Please sign up first.', 'ACCOUNT_NOT_FOUND')
     }
 
     const passwordMatches = await bcrypt.compare(req.body.password, user.password)
@@ -92,9 +115,10 @@ export async function login(req, res, next) {
 
     const token = generateToken(user)
 
+    setAuthCookie(res, token)
+
     return successResponse(res, 200, 'Login successful.', {
       user: buildAuthPayload(user),
-      token,
     })
   } catch (error) {
     next(error)
@@ -105,4 +129,9 @@ export async function getMe(req, res) {
   return successResponse(res, 200, 'Authenticated user loaded.', {
     user: buildAuthPayload(req.user),
   })
+}
+
+export async function logout(req, res) {
+  clearAuthCookie(res)
+  return successResponse(res, 200, 'Logout successful.', null)
 }
