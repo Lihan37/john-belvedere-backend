@@ -1,7 +1,16 @@
 import { Router } from 'express'
-import { body } from 'express-validator'
-import { getMe, login, logout, register } from '../controllers/authController.js'
+import { body, query } from 'express-validator'
+import {
+  forgotPassword,
+  getMe,
+  getUsers,
+  login,
+  logout,
+  register,
+  resetPassword,
+} from '../controllers/authController.js'
 import { protect } from '../middleware/authMiddleware.js'
+import { requireAdmin } from '../middleware/adminMiddleware.js'
 import { validateRequest } from '../middleware/validationMiddleware.js'
 import { normalizeEmail, normalizeText, sanitizePhone } from '../utils/helpers.js'
 
@@ -47,7 +56,47 @@ router.post(
   login,
 )
 
+router.post(
+  '/forgot-password',
+  [
+    body('identity').optional({ values: 'falsy' }).customSanitizer(normalizeText),
+    body('phone').optional({ values: 'falsy' }).customSanitizer(sanitizePhone),
+    body().custom((value) => {
+      if (!value.identity && !value.phone) {
+        throw new Error('Email or phone is required.')
+      }
+      return true
+    }),
+  ],
+  validateRequest,
+  forgotPassword,
+)
+
+router.post(
+  '/reset-password',
+  [
+    body('token').trim().notEmpty().withMessage('Reset token is required.'),
+    body('password')
+      .isLength({ min: 6, max: 100 })
+      .withMessage('Password must be between 6 and 100 characters.'),
+  ],
+  validateRequest,
+  resetPassword,
+)
+
 router.get('/me', protect, getMe)
+router.get(
+  '/users',
+  protect,
+  requireAdmin,
+  [
+    query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer.'),
+    query('limit').optional().isInt({ min: 1, max: 50 }).withMessage('Limit must be between 1 and 50.'),
+    query('search').optional({ values: 'falsy' }).customSanitizer(normalizeText).isLength({ max: 120 }),
+  ],
+  validateRequest,
+  getUsers,
+)
 router.post('/logout', logout)
 
 export default router

@@ -9,7 +9,7 @@ import {
 import { protect } from '../middleware/authMiddleware.js'
 import { requireAdmin } from '../middleware/adminMiddleware.js'
 import { validateRequest } from '../middleware/validationMiddleware.js'
-import { normalizeTableNumber, normalizeText, roundPrice } from '../utils/helpers.js'
+import { normalizeText, roundPrice } from '../utils/helpers.js'
 
 const router = Router()
 
@@ -17,10 +17,6 @@ router.post(
   '/',
   protect,
   [
-    body('tableNumber')
-      .customSanitizer(normalizeTableNumber)
-      .isLength({ min: 1, max: 20 })
-      .withMessage('Table number is required.'),
     body('paymentMethod')
       .isIn(['stripe', 'counter'])
       .withMessage('Payment method must be stripe or counter.'),

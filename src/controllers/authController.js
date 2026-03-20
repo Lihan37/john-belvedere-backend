@@ -1,8 +1,13 @@
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { matchedData } from 'express-validator'
 import {
+  countAllUsers,
+  countUsersByRole,
   createUser,
+  findUsersPage,
   findUserByEmailOrPhone,
+  findUserByResetTokenHash,
   updateUserById,
 } from '../models/User.js'
 import { generateToken } from '../utils/generateToken.js'
@@ -14,6 +19,7 @@ import {
   sanitizePhone,
   successResponse,
 } from '../utils/helpers.js'
+import { createAuditLog } from '../models/AuditLog.js'
 
 function resolveRole(phone) {
   const normalizedPhone = sanitizePhone(phone)
@@ -71,6 +77,15 @@ export async function register(req, res, next) {
     const token = generateToken(user)
 
     setAuthCookie(res, token)
+    await createAuditLog({
+      actorUserId: user._id,
+      actorRole: user.role,
+      actorPhone: user.phone,
+      action: 'auth.register',
+      entityType: 'user',
+      entityId: user._id?.toString?.(),
+      requestId: req.requestId,
+    })
 
     return successResponse(res, 201, 'Account created successfully.', {
       user: buildAuthPayload(user),
@@ -116,6 +131,15 @@ export async function login(req, res, next) {
     const token = generateToken(user)
 
     setAuthCookie(res, token)
+    await createAuditLog({
+      actorUserId: user._id,
+      actorRole: user.role,
+      actorPhone: user.phone,
+      action: requestedRole === 'admin' ? 'auth.login.admin' : 'auth.login.customer',
+      entityType: 'user',
+      entityId: user._id?.toString?.(),
+      requestId: req.requestId,
+    })
 
     return successResponse(res, 200, 'Login successful.', {
       user: buildAuthPayload(user),
@@ -131,7 +155,133 @@ export async function getMe(req, res) {
   })
 }
 
+export async function getUsers(req, res, next) {
+  try {
+    const page = Math.max(Number(req.query.page || 1), 1)
+    const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 50)
+    const search = req.query.search || ''
+
+    const [{ items, total }, totalUsers, adminCount] = await Promise.all([
+      findUsersPage({
+        page,
+        limit,
+        search,
+        projection: {
+          password: 0,
+          resetPasswordTokenHash: 0,
+          resetPasswordExpiresAt: 0,
+        },
+      }),
+      countAllUsers(),
+      countUsersByRole('admin'),
+    ])
+
+    const customerCount = Math.max(totalUsers - adminCount, 0)
+    const totalPages = Math.max(Math.ceil(total / limit), 1)
+
+    return successResponse(res, 200, 'Users fetched successfully.', {
+      users: items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+      stats: {
+        totalUsers,
+        customerCount,
+        adminCount,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export async function logout(req, res) {
   clearAuthCookie(res)
   return successResponse(res, 200, 'Logout successful.', null)
+}
+
+export async function forgotPassword(req, res, next) {
+  try {
+    const identity = req.body.identity ? normalizeEmail(req.body.identity) : undefined
+    const phone = req.body.phone ? sanitizePhone(req.body.phone) : undefined
+
+    const user = await findUserByEmailOrPhone({
+      email: identity,
+      phone: phone || sanitizePhone(identity),
+    })
+
+    if (!user) {
+      return successResponse(res, 200, 'If the account exists, a reset token has been prepared.', null)
+    }
+
+    const rawToken = crypto.randomBytes(24).toString('hex')
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex')
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 30)
+
+    await updateUserById(user._id, {
+      resetPasswordTokenHash: hashedToken,
+      resetPasswordExpiresAt: expiresAt,
+    })
+
+    await createAuditLog({
+      actorUserId: user._id,
+      actorRole: user.role,
+      actorPhone: user.phone,
+      action: 'auth.password_reset.requested',
+      entityType: 'user',
+      entityId: user._id?.toString?.(),
+      requestId: req.requestId,
+    })
+
+    const responsePayload = process.env.NODE_ENV === 'production'
+      ? null
+      : {
+          resetToken: rawToken,
+          expiresAt,
+        }
+
+    return successResponse(
+      res,
+      200,
+      'If the account exists, a reset token has been prepared.',
+      responsePayload,
+    )
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function resetPassword(req, res, next) {
+  try {
+    const tokenHash = crypto.createHash('sha256').update(req.body.token).digest('hex')
+    const user = await findUserByResetTokenHash(tokenHash)
+
+    if (!user) {
+      return errorResponse(res, 400, 'Invalid or expired reset token.', 'INVALID_RESET_TOKEN')
+    }
+
+    const hashedPassword = await bcrypt.hash(req.body.password, 12)
+    await updateUserById(user._id, {
+      password: hashedPassword,
+      resetPasswordTokenHash: null,
+      resetPasswordExpiresAt: null,
+    })
+
+    await createAuditLog({
+      actorUserId: user._id,
+      actorRole: user.role,
+      actorPhone: user.phone,
+      action: 'auth.password_reset.completed',
+      entityType: 'user',
+      entityId: user._id?.toString?.(),
+      requestId: req.requestId,
+    })
+
+    return successResponse(res, 200, 'Password reset successful. You can log in now.', null)
+  } catch (error) {
+    next(error)
+  }
 }

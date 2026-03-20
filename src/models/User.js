@@ -36,3 +36,54 @@ export async function updateUserById(id, updates) {
   await users().updateOne({ _id: toObjectId(id) }, { $set: nextUpdates })
   return findUserById(id)
 }
+
+export async function findUserByResetTokenHash(resetPasswordTokenHash) {
+  return users().findOne({
+    resetPasswordTokenHash,
+    resetPasswordExpiresAt: { $gt: new Date() },
+  })
+}
+
+export async function findAllUsers(options = {}) {
+  return users()
+    .find(
+      {},
+      options.projection ? { projection: options.projection } : undefined,
+    )
+    .sort({ createdAt: -1 })
+    .toArray()
+}
+
+export async function findUsersPage({ page = 1, limit = 50, search = '', projection } = {}) {
+  const normalizedSearch = String(search || '').trim()
+  const filter = normalizedSearch
+    ? {
+        $or: [
+          { name: { $regex: normalizedSearch, $options: 'i' } },
+          { email: { $regex: normalizedSearch, $options: 'i' } },
+          { phone: { $regex: normalizedSearch, $options: 'i' } },
+          { role: { $regex: normalizedSearch, $options: 'i' } },
+        ],
+      }
+    : {}
+
+  const [items, total] = await Promise.all([
+    users()
+      .find(filter, projection ? { projection } : undefined)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray(),
+    users().countDocuments(filter),
+  ])
+
+  return { items, total }
+}
+
+export async function countUsersByRole(role) {
+  return users().countDocuments({ role })
+}
+
+export async function countAllUsers() {
+  return users().countDocuments()
+}

@@ -4,6 +4,7 @@ import {
   createMenuItem,
   deleteMenuItem,
   getMenu,
+  getMenuUploadSignature,
   updateMenuItem,
 } from '../controllers/menuController.js'
 import { protect } from '../middleware/authMiddleware.js'
@@ -14,6 +15,7 @@ import { normalizeText, roundPrice } from '../utils/helpers.js'
 const router = Router()
 
 router.get('/', getMenu)
+router.get('/upload-signature', protect, requireAdmin, getMenuUploadSignature)
 
 router.post(
   '/',
@@ -28,7 +30,7 @@ router.post(
       .customSanitizer(roundPrice)
       .isFloat({ min: 0, max: 100000 })
       .withMessage('Price must be a non-negative number.'),
-    body('image').isURL().withMessage('Image must be a valid URL.'),
+    body('image').optional({ values: 'falsy' }).isURL().withMessage('Image must be a valid URL.'),
     body('category')
       .customSanitizer(normalizeText)
       .isLength({ min: 2, max: 80 })
@@ -50,7 +52,7 @@ router.put(
     param('id').isMongoId().withMessage('Invalid menu item id.'),
     body('name').optional().customSanitizer(normalizeText).isLength({ min: 2, max: 120 }),
     body('price').optional().customSanitizer(roundPrice).isFloat({ min: 0, max: 100000 }),
-    body('image').optional().isURL().withMessage('Image must be a valid URL.'),
+    body('image').optional({ values: 'falsy' }).isURL().withMessage('Image must be a valid URL.'),
     body('category').optional().customSanitizer(normalizeText).isLength({ min: 2, max: 80 }),
     body('description').optional().customSanitizer(normalizeText).isLength({ min: 8, max: 500 }),
     body().custom((value) => {

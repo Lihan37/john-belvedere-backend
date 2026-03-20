@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
@@ -10,6 +11,7 @@ import authRoutes from './routes/authRoutes.js'
 import menuRoutes from './routes/menuRoutes.js'
 import orderRoutes from './routes/orderRoutes.js'
 import { errorResponse, successResponse } from './utils/helpers.js'
+import { logger } from './utils/logger.js'
 
 dotenv.config()
 
@@ -51,6 +53,12 @@ function requestSanitizer(req, res, next) {
   next()
 }
 
+function requestIdentity(req, res, next) {
+  req.requestId = crypto.randomUUID()
+  res.setHeader('x-request-id', req.requestId)
+  next()
+}
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -62,6 +70,7 @@ app.use(
     credentials: true,
   }),
 )
+app.use(requestIdentity)
 app.use(helmet())
 app.use(
   rateLimit({
@@ -71,7 +80,15 @@ app.use(
     legacyHeaders: false,
   }),
 )
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
+app.use(
+  morgan(':method :url :status :response-time ms - :res[content-length] [reqId=:req[x-request-id]]', {
+    stream: {
+      write(message) {
+        logger.info(message.trim())
+      },
+    },
+  }),
+)
 app.use(express.json({ limit: '1mb' }))
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
@@ -80,6 +97,7 @@ app.use(hpp())
 
 app.get('/api/health', (req, res) => successResponse(res, 200, 'Server is healthy.', {
   uptime: process.uptime(),
+  requestId: req.requestId,
 }))
 
 app.use('/api/auth', authRoutes)
@@ -97,7 +115,14 @@ app.use((error, req, res, next) => {
     return errorResponse(res, 409, 'You already have an account.', 'ACCOUNT_EXISTS')
   }
 
-  console.error(error)
+  logger.error('Unhandled application error', {
+    requestId: req.requestId,
+    message: error.message,
+    code: error.code,
+    stack: error.stack,
+    path: req.originalUrl,
+    method: req.method,
+  })
 
   return errorResponse(
     res,

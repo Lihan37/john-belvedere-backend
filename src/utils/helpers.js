@@ -1,3 +1,5 @@
+import crypto from 'crypto'
+
 export function sanitizePhone(value = '') {
   return String(value).replace(/[^\d+]/g, '')
 }
@@ -57,4 +59,34 @@ export function errorResponse(res, statusCode, message, code = 'REQUEST_FAILED',
     message,
     ...extras,
   })
+}
+
+export function publicOrder(order) {
+  if (!order) return order
+  return {
+    ...order,
+    _id: order._id?.toString?.() || order._id,
+    customerId: order.customerId?.toString?.() || order.customerId || null,
+    items: (order.items || []).map((item) => ({
+      ...item,
+      menuItemId: item.menuItemId?.toString?.() || item.menuItemId || null,
+    })),
+  }
+}
+
+export function buildCloudinarySignature(params = {}) {
+  const apiSecret = process.env.CLOUDINARY_API_SECRET
+  if (!apiSecret) {
+    throw new Error('CLOUDINARY_API_SECRET is not configured.')
+  }
+
+  const normalizedEntries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right))
+
+  const payload = normalizedEntries
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&')
+
+  return crypto.createHash('sha1').update(`${payload}${apiSecret}`).digest('hex')
 }
