@@ -2,8 +2,10 @@ import { Router } from 'express'
 import { body, param } from 'express-validator'
 import {
   createOrder,
+  getDailyOrderReport,
   getMyOrders,
   getOrders,
+  updateOrderPaymentStatus,
   updateOrderStatus,
 } from '../controllers/orderController.js'
 import { protect } from '../middleware/authMiddleware.js'
@@ -43,6 +45,7 @@ router.post(
 
 router.get('/', protect, requireAdmin, getOrders)
 router.get('/my', protect, getMyOrders)
+router.get('/reports/daily', protect, requireAdmin, getDailyOrderReport)
 
 router.put(
   '/:id/status',
@@ -54,6 +57,18 @@ router.put(
   ],
   validateRequest,
   updateOrderStatus,
+)
+
+router.put(
+  '/:id/payment',
+  protect,
+  requireAdmin,
+  [
+    param('id').isMongoId().withMessage('Invalid order id.'),
+    body('paymentStatus').isIn(['paid', 'unpaid']).withMessage('Invalid payment status.'),
+  ],
+  validateRequest,
+  updateOrderPaymentStatus,
 )
 
 export default router

@@ -22,7 +22,10 @@ export async function createMenuItem(data) {
 }
 
 export async function updateMenuItemById(id, updates) {
-  const nextUpdates = { ...updates, updatedAt: new Date() }
+  const sanitizedUpdates = Object.fromEntries(
+    Object.entries(updates || {}).filter(([key, value]) => key && value !== undefined),
+  )
+  const nextUpdates = { ...sanitizedUpdates, updatedAt: new Date() }
   await menuItems().findOneAndUpdate(
     { _id: toObjectId(id) },
     { $set: nextUpdates },

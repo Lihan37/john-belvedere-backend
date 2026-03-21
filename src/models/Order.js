@@ -44,3 +44,31 @@ export async function updateOrderStatusById(id, status) {
   )
   return orders().findOne({ _id: toObjectId(id) })
 }
+
+export async function updateOrderPaymentStatusById(id, paymentStatus) {
+  const nextUpdates = {
+    paymentStatus,
+    paidAt: paymentStatus === 'paid' ? new Date() : null,
+    updatedAt: new Date(),
+  }
+
+  await orders().findOneAndUpdate(
+    { _id: toObjectId(id) },
+    { $set: nextUpdates },
+    { returnDocument: 'after' },
+  )
+
+  return orders().findOne({ _id: toObjectId(id) })
+}
+
+export async function findOrdersInDateRange(startDate, endDate) {
+  return orders()
+    .find({
+      createdAt: {
+        $gte: startDate,
+        $lt: endDate,
+      },
+    })
+    .sort({ createdAt: -1 })
+    .toArray()
+}

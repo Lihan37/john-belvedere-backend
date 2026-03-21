@@ -39,7 +39,9 @@ export async function createMenuItem(req, res, next) {
 
 export async function updateMenuItem(req, res, next) {
   try {
-    const data = matchedData(req, { locations: ['body'] })
+    const data = Object.fromEntries(
+      Object.entries(matchedData(req, { locations: ['body'] })).filter(([key]) => key),
+    )
     const menuItem = await updateMenuItemById(req.params.id, data)
     if (!menuItem) {
       return errorResponse(res, 404, 'Menu item not found.', 'MENU_ITEM_NOT_FOUND')
@@ -83,7 +85,7 @@ export async function deleteMenuItem(req, res, next) {
 
 export async function getMenuUploadSignature(req, res, next) {
   try {
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim()
     const apiKey = process.env.CLOUDINARY_API_KEY
     const folder = process.env.CLOUDINARY_FOLDER || 'john-belvedere/menu-items'
 
@@ -93,6 +95,15 @@ export async function getMenuUploadSignature(req, res, next) {
         500,
         'Cloudinary upload is not configured yet.',
         'CLOUDINARY_NOT_CONFIGURED',
+      )
+    }
+
+    if (!/^[a-z0-9_-]+$/i.test(cloudName)) {
+      return errorResponse(
+        res,
+        500,
+        'Cloudinary cloud name is invalid. Update CLOUDINARY_CLOUD_NAME to the exact value from the Cloudinary dashboard.',
+        'CLOUDINARY_INVALID_CLOUD_NAME',
       )
     }
 
