@@ -26,25 +26,34 @@ function resolveRole(phone) {
   return getAllowedAdminPhones().includes(normalizedPhone) ? 'admin' : 'customer'
 }
 
+function getCookieName() {
+  return process.env.JWT_COOKIE_NAME || 'jb_access_token'
+}
+
 function getCookieOptions() {
   const isProduction = process.env.NODE_ENV === 'production'
+  const configuredSameSite = process.env.JWT_COOKIE_SAME_SITE?.trim()?.toLowerCase()
+  const sameSite = ['lax', 'strict', 'none'].includes(configuredSameSite)
+    ? configuredSameSite
+    : (isProduction ? 'none' : 'lax')
+  const secure = sameSite === 'none' ? true : isProduction
+
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    secure,
+    sameSite,
     maxAge: 1000 * 60 * 60 * 24 * 7,
     path: '/',
+    ...(process.env.JWT_COOKIE_DOMAIN ? { domain: process.env.JWT_COOKIE_DOMAIN } : {}),
   }
 }
 
 function setAuthCookie(res, token) {
-  const cookieName = process.env.JWT_COOKIE_NAME || 'jb_access_token'
-  res.cookie(cookieName, token, getCookieOptions())
+  res.cookie(getCookieName(), token, getCookieOptions())
 }
 
 function clearAuthCookie(res) {
-  const cookieName = process.env.JWT_COOKIE_NAME || 'jb_access_token'
-  res.clearCookie(cookieName, getCookieOptions())
+  res.clearCookie(getCookieName(), getCookieOptions())
 }
 
 export async function register(req, res, next) {
