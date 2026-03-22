@@ -20,6 +20,10 @@ const app = express()
 const allowedOrigins = [process.env.CLIENT_URL, 'http://localhost:5173'].filter(Boolean)
 
 function sanitizePayload(value) {
+  if (Buffer.isBuffer(value)) {
+    return value
+  }
+
   if (Array.isArray(value)) {
     for (let index = 0; index < value.length; index += 1) {
       value[index] = sanitizePayload(value[index])
@@ -89,6 +93,7 @@ app.use(
     },
   }),
 )
+app.use('/api/orders/stripe/webhook', express.raw({ type: 'application/json' }))
 app.use(express.json({ limit: '1mb' }))
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())

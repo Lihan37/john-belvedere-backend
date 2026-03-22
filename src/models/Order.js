@@ -25,6 +25,10 @@ export async function createOrderRecord(data) {
   return { ...document, _id: result.insertedId }
 }
 
+export async function findOrderById(id) {
+  return orders().findOne({ _id: toObjectId(id) })
+}
+
 export async function findAllOrders() {
   return orders().find({}).sort({ createdAt: -1 }).toArray()
 }
@@ -59,6 +63,25 @@ export async function updateOrderPaymentStatusById(id, paymentStatus) {
   )
 
   return orders().findOne({ _id: toObjectId(id) })
+}
+
+export async function updateOrderById(id, updates) {
+  const nextUpdates = {
+    ...updates,
+    updatedAt: new Date(),
+  }
+
+  await orders().findOneAndUpdate(
+    { _id: toObjectId(id) },
+    { $set: nextUpdates },
+    { returnDocument: 'after' },
+  )
+
+  return orders().findOne({ _id: toObjectId(id) })
+}
+
+export async function findOrderByStripeSessionId(sessionId) {
+  return orders().findOne({ stripeCheckoutSessionId: sessionId })
 }
 
 export async function findOrdersInDateRange(startDate, endDate) {
