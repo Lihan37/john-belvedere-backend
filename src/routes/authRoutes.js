@@ -9,7 +9,7 @@ import {
   register,
   resetPassword,
 } from '../controllers/authController.js'
-import { protect } from '../middleware/authMiddleware.js'
+import { optionalProtect, protect } from '../middleware/authMiddleware.js'
 import { requireAdmin } from '../middleware/adminMiddleware.js'
 import { validateRequest } from '../middleware/validationMiddleware.js'
 import { normalizeEmail, normalizeText, sanitizePhone } from '../utils/helpers.js'
@@ -84,7 +84,7 @@ router.post(
   resetPassword,
 )
 
-router.get('/me', protect, getMe)
+router.get('/me', optionalProtect, getMe)
 router.get(
   '/users',
   protect,

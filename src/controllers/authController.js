@@ -160,7 +160,7 @@ export async function login(req, res, next) {
 
 export async function getMe(req, res) {
   return successResponse(res, 200, 'Authenticated user loaded.', {
-    user: buildAuthPayload(req.user),
+    user: req.user ? buildAuthPayload(req.user) : null,
   })
 }
 
