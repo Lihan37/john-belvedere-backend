@@ -13,6 +13,7 @@ import {
 } from '../models/Order.js'
 import {
   createStripeCheckoutSessionRecord,
+  findStripeCheckoutSessionById,
   findStripeCheckoutSessionBySessionId,
   updateStripeCheckoutSessionById,
 } from '../models/StripeCheckoutSession.js'
@@ -67,6 +68,50 @@ async function resolveCustomerSnapshot(req, customerId) {
   return findUserById(resolvedCustomerId, {
     projection: { password: 0 },
   })
+}
+
+async function confirmStripeCheckoutSession(checkoutSession, session) {
+  let order = checkoutSession.orderId ? await findOrderById(checkoutSession.orderId) : null
+  let shouldSendNotification = false
+
+  if (!order) {
+    order = await createOrderRecord({
+      paymentMethod: 'stripe',
+      paymentStatus: 'paid',
+      paidAt: new Date(),
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: session.payment_intent || null,
+      customerId: checkoutSession.customerId,
+      customerName: checkoutSession.customerName,
+      customerEmail: checkoutSession.customerEmail,
+      customerPhone: checkoutSession.customerPhone,
+      items: checkoutSession.items,
+      totalPrice: checkoutSession.totalPrice,
+      status: 'pending',
+    })
+
+    await updateStripeCheckoutSessionById(checkoutSession._id, {
+      status: 'confirmed',
+      orderId: order._id.toString(),
+      stripeCheckoutSessionId: session.id,
+    })
+    shouldSendNotification = true
+  } else if (order.paymentStatus !== 'paid') {
+    order = await updateOrderById(order._id, {
+      paymentStatus: 'paid',
+      paidAt: new Date(),
+      stripeCheckoutSessionId: session.id,
+      stripePaymentIntentId: session.payment_intent || null,
+    })
+
+    await updateStripeCheckoutSessionById(checkoutSession._id, {
+      status: 'confirmed',
+      stripeCheckoutSessionId: session.id,
+    })
+    shouldSendNotification = true
+  }
+
+  return { order, shouldSendNotification }
 }
 
 export async function createOrder(req, res, next) {
@@ -215,9 +260,28 @@ export async function updateOrderStatus(req, res, next) {
 export async function getStripeCheckoutSessionStatus(req, res, next) {
   try {
     const { sessionId } = matchedData(req, { locations: ['params'] })
-    const order = await findOrderByStripeSessionId(sessionId)
+    let order = await findOrderByStripeSessionId(sessionId)
+    let checkoutSession = await findStripeCheckoutSessionBySessionId(sessionId)
 
-    const checkoutSession = await findStripeCheckoutSessionBySessionId(sessionId)
+    if (!order && checkoutSession && checkoutSession.status !== 'confirmed') {
+      const stripe = getStripeClient()
+      const session = await stripe.checkout.sessions.retrieve(sessionId)
+
+      if (session.payment_status === 'paid') {
+        const confirmation = await confirmStripeCheckoutSession(checkoutSession, session)
+        order = confirmation.order
+        checkoutSession = await findStripeCheckoutSessionById(checkoutSession._id)
+
+        if (confirmation.shouldSendNotification) {
+          void sendOrderNotificationEmail(order).catch((error) => {
+            logger.error('Failed to send Stripe order email from session status', {
+              message: error.message,
+              orderId: order._id?.toString?.(),
+            })
+          })
+        }
+      }
+    }
 
     if (!order && !checkoutSession) {
       return errorResponse(res, 404, 'Checkout session not found.', 'CHECKOUT_SESSION_NOT_FOUND')
@@ -359,44 +423,15 @@ export async function handleStripeWebhook(req, res, next) {
         return res.status(200).json({ received: true })
       }
 
-      const checkoutSession = await findStripeCheckoutSessionBySessionId(sessionId)
+      const checkoutSession =
+        await findStripeCheckoutSessionBySessionId(sessionId) ||
+        await findStripeCheckoutSessionById(checkoutSessionRecordId)
+
       if (!checkoutSession) {
         return res.status(200).json({ received: true })
       }
 
-      let order = checkoutSession.orderId ? await findOrderById(checkoutSession.orderId) : null
-      let shouldSendNotification = false
-
-      if (!order) {
-        order = await createOrderRecord({
-          paymentMethod: 'stripe',
-          paymentStatus: 'paid',
-          paidAt: new Date(),
-          stripeCheckoutSessionId: sessionId,
-          stripePaymentIntentId: session.payment_intent || null,
-          customerId: checkoutSession.customerId,
-          customerName: checkoutSession.customerName,
-          customerEmail: checkoutSession.customerEmail,
-          customerPhone: checkoutSession.customerPhone,
-          items: checkoutSession.items,
-          totalPrice: checkoutSession.totalPrice,
-          status: 'pending',
-        })
-
-        await updateStripeCheckoutSessionById(checkoutSession._id, {
-          status: 'confirmed',
-          orderId: order._id.toString(),
-        })
-        shouldSendNotification = true
-      } else if (order.paymentStatus !== 'paid') {
-        order = await updateOrderById(order._id, {
-          paymentStatus: 'paid',
-          paidAt: new Date(),
-          stripeCheckoutSessionId: sessionId,
-          stripePaymentIntentId: session.payment_intent || null,
-        })
-        shouldSendNotification = true
-      }
+      const { order, shouldSendNotification } = await confirmStripeCheckoutSession(checkoutSession, session)
 
       await createAuditLog({
         actorUserId: null,

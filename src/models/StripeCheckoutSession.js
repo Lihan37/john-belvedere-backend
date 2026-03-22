@@ -44,6 +44,14 @@ export async function updateStripeCheckoutSessionById(id, updates) {
   return stripeCheckoutSessions().findOne({ _id: toObjectId(id) })
 }
 
+export async function findStripeCheckoutSessionById(id) {
+  if (!id || !isValidObjectId(id)) {
+    return null
+  }
+
+  return stripeCheckoutSessions().findOne({ _id: toObjectId(id) })
+}
+
 export async function findStripeCheckoutSessionBySessionId(sessionId) {
   return stripeCheckoutSessions().findOne({ stripeCheckoutSessionId: sessionId })
 }
