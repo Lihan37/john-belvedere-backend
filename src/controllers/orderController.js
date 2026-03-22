@@ -23,6 +23,22 @@ import {
 import { createAuditLog } from '../models/AuditLog.js'
 import { logger } from '../utils/logger.js'
 
+function getStripeConfigError() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return 'STRIPE_SECRET_KEY is not configured.'
+  }
+
+  if (!process.env.STRIPE_SUCCESS_URL) {
+    return 'STRIPE_SUCCESS_URL is not configured.'
+  }
+
+  if (!process.env.STRIPE_CANCEL_URL) {
+    return 'STRIPE_CANCEL_URL is not configured.'
+  }
+
+  return null
+}
+
 function buildOrderPayload(data, req, customer = null) {
   return {
     ...data,
@@ -101,6 +117,11 @@ export async function getMyOrders(req, res, next) {
 
 export async function createStripeCheckout(req, res, next) {
   try {
+    const stripeConfigError = getStripeConfigError()
+    if (stripeConfigError) {
+      return errorResponse(res, 500, stripeConfigError, 'STRIPE_NOT_CONFIGURED')
+    }
+
     const data = matchedData(req, { locations: ['body'] })
     const computedTotal = calculateOrderTotal(data.items)
     if (computedTotal !== data.totalPrice) {
