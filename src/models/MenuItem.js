@@ -74,7 +74,7 @@ export async function syncMenuItems(items) {
     const existing = existingByKey.get(key)
     const nextDocument = {
       ...item,
-      image: item.image || '',
+      image: item.image || existing?.image || '',
       isAvailable: true,
       updatedAt: now,
     }
