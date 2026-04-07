@@ -14,6 +14,13 @@ export async function findAvailableMenuItems() {
     .toArray()
 }
 
+export async function findAllMenuItems() {
+  return menuItems()
+    .find({})
+    .sort({ category: 1, createdAt: -1 })
+    .toArray()
+}
+
 export async function createMenuItem(data) {
   const now = new Date()
   const document = { isAvailable: true, ...data, createdAt: now, updatedAt: now }

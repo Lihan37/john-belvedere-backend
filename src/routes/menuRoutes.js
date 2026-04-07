@@ -3,6 +3,7 @@ import { body, param } from 'express-validator'
 import {
   createMenuItem,
   deleteMenuItem,
+  getAdminMenu,
   getMenu,
   getMenuUploadSignature,
   updateMenuItem,
@@ -15,6 +16,7 @@ import { normalizeText, roundPrice } from '../utils/helpers.js'
 const router = Router()
 
 router.get('/', getMenu)
+router.get('/admin', protect, requireAdmin, getAdminMenu)
 router.get('/upload-signature', protect, requireAdmin, getMenuUploadSignature)
 
 router.post(
@@ -55,8 +57,9 @@ router.put(
     body('image').optional({ values: 'falsy' }).isURL().withMessage('Image must be a valid URL.'),
     body('category').optional().customSanitizer(normalizeText).isLength({ min: 2, max: 80 }),
     body('description').optional().customSanitizer(normalizeText).isLength({ min: 8, max: 500 }),
+    body('isAvailable').optional().isBoolean().withMessage('Availability must be true or false.'),
     body().custom((value) => {
-      const allowedFields = ['name', 'price', 'image', 'category', 'description']
+      const allowedFields = ['name', 'price', 'image', 'category', 'description', 'isAvailable']
       const hasUpdatableField = allowedFields.some((field) => field in value)
       if (!hasUpdatableField) {
         throw new Error('At least one updatable field is required.')

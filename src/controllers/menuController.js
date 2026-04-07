@@ -2,6 +2,7 @@ import { matchedData } from 'express-validator'
 import {
   createMenuItem as createMenuItemRecord,
   deleteMenuItemById,
+  findAllMenuItems,
   findAvailableMenuItems,
   updateMenuItemById,
 } from '../models/MenuItem.js'
@@ -12,6 +13,15 @@ export async function getMenu(req, res, next) {
   try {
     const menuItems = await findAvailableMenuItems()
     return successResponse(res, 200, 'Menu fetched successfully.', menuItems)
+  } catch (error) {
+    next(error)
+  }
+}
+
+export async function getAdminMenu(req, res, next) {
+  try {
+    const menuItems = await findAllMenuItems()
+    return successResponse(res, 200, 'Admin menu fetched successfully.', menuItems)
   } catch (error) {
     next(error)
   }
