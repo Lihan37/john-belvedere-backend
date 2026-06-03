@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { body, param } from 'express-validator'
 import {
+  createCounterOrder,
   createOrder,
   createStripeCheckout,
   getDailyOrderReport,
@@ -40,7 +41,36 @@ const orderBodyValidators = [
   body('items.*.quantity').isInt({ min: 1, max: 20 }).withMessage('Item quantity must be at least 1.'),
 ]
 
+const counterOrderBodyValidators = [
+  body('customerName')
+    .customSanitizer(normalizeText)
+    .isLength({ min: 2, max: 80 })
+    .withMessage('Customer name is required.'),
+  body('totalPrice')
+    .customSanitizer(roundPrice)
+    .isFloat({ min: 0, max: 1000000 })
+    .withMessage('Total price must be valid.'),
+  body('items').isArray({ min: 1, max: 25 }).withMessage('At least one order item is required.'),
+  body('items.*.menuItemId').optional({ values: 'falsy' }).isMongoId().withMessage('Invalid menu item id.'),
+  body('items.*.name')
+    .customSanitizer(normalizeText)
+    .isLength({ min: 2, max: 120 })
+    .withMessage('Item name is required.'),
+  body('items.*.price')
+    .customSanitizer(roundPrice)
+    .isFloat({ min: 0, max: 100000 })
+    .withMessage('Item price must be valid.'),
+  body('items.*.quantity').isInt({ min: 1, max: 20 }).withMessage('Item quantity must be at least 1.'),
+]
+
 router.post('/stripe/webhook', handleStripeWebhook)
+
+router.post(
+  '/counter',
+  counterOrderBodyValidators,
+  validateRequest,
+  createCounterOrder,
+)
 
 router.post(
   '/',

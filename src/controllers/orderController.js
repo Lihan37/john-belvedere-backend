@@ -147,6 +147,43 @@ export async function createOrder(req, res, next) {
   }
 }
 
+export async function createCounterOrder(req, res, next) {
+  try {
+    const data = matchedData(req, { locations: ['body'] })
+    const computedTotal = calculateOrderTotal(data.items)
+
+    if (computedTotal !== data.totalPrice) {
+      return errorResponse(res, 422, 'Order total does not match item totals.', 'ORDER_TOTAL_MISMATCH', {
+        expectedTotal: computedTotal,
+      })
+    }
+
+    const order = await createOrderRecord({
+      paymentMethod: 'counter',
+      paymentStatus: 'unpaid',
+      source: 'counter-screen',
+      customerId: null,
+      customerName: data.customerName,
+      customerEmail: '',
+      customerPhone: '',
+      items: data.items,
+      totalPrice: data.totalPrice,
+      status: 'pending',
+    })
+
+    void sendOrderNotificationEmail(order).catch((error) => {
+      logger.error('Failed to send public counter order email', {
+        message: error.message,
+        orderId: order._id?.toString?.(),
+      })
+    })
+
+    return successResponse(res, 201, 'Counter order created successfully.', publicOrder(order))
+  } catch (error) {
+    next(error)
+  }
+}
+
 export async function getOrders(req, res, next) {
   try {
     const orders = await findAllOrders()
@@ -365,6 +402,8 @@ export async function getDailyOrderReport(req, res, next) {
         accumulator.byStatus[order.status] = (accumulator.byStatus[order.status] || 0) + 1
         accumulator.byPaymentMethod[paymentMethod] =
           (accumulator.byPaymentMethod[paymentMethod] || 0) + 1
+        accumulator.bySource[order.source || 'standard'] =
+          (accumulator.bySource[order.source || 'standard'] || 0) + 1
 
         if (paymentStatus === 'paid') {
           accumulator.paidOrders += 1
@@ -385,6 +424,7 @@ export async function getDailyOrderReport(req, res, next) {
         unpaidAmount: 0,
         byStatus: { pending: 0, preparing: 0, served: 0 },
         byPaymentMethod: { counter: 0, stripe: 0 },
+        bySource: { standard: 0, 'counter-screen': 0 },
       },
     )
 
